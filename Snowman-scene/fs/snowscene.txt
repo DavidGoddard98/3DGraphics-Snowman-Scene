@@ -1,0 +1,113 @@
+#version 330 core
+//fragment shader to create the snow effect on the background
+//Does a mix of three textures
+
+in vec3 aPos;
+in vec3 aNormal;
+in vec2 aTexCoord;
+
+out vec4 fragColor;
+
+uniform sampler2D first_texture;
+uniform sampler2D second_texture;
+uniform sampler2D third_texture;
+uniform vec3 viewPos;
+uniform vec2 downOffset;
+uniform vec2 diagonalOffset;
+
+
+struct Light {
+  vec3 direction;
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+uniform Light light;
+
+struct SpotLight {
+  vec3 position;
+  vec3 direction;
+  float cutOff;
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+uniform SpotLight spotLight;
+
+struct Material {
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+  float shininess;
+};
+uniform Material material;
+
+//Alot of the vectors have been cast to vec4 because of the mixture of 3 textures...
+void main() {
+
+
+  vec3 norm = normalize(aNormal);
+  vec3 viewDir = normalize(viewPos - aPos);
+  vec4 result = vec4(0.0, 0.0, 0.0, 0.0);
+
+
+  //Creates the snowy effect in background
+  vec2 movingTexCoord = downOffset + aTexCoord;
+  vec2 anotherMovingTexCoord = diagonalOffset + aTexCoord;
+
+  //Mixture of three textures - (Forest, and two different snow textures)
+  vec4 first_second_tex = vec4(mix(texture(first_texture, aTexCoord),
+                         texture(second_texture, movingTexCoord),
+                     0.3f));
+  vec4 final_mix = vec4(mix(first_second_tex, texture(third_texture, anotherMovingTexCoord), 0.3f));
+
+
+  //Calc spotlight - (Light pole)////////////////////////////////////////////////////
+  vec3 lightDir = normalize(spotLight.position - aPos);
+  float theta = dot(lightDir, normalize(-spotLight.direction));
+  if(theta > spotLight.cutOff) {
+    //ambient
+    vec4 ambient = vec4(vec4(spotLight.ambient,1.0) * final_mix );
+
+    vec3 lightDir = normalize(-spotLight.direction);
+
+    //diffuse
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec4 diffuse = vec4(vec4(spotLight.diffuse,1.0) * diff  * final_mix);
+
+    //specular
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    vec4 specular = vec4((spotLight.specular * spec), 1.0) ;
+    result =  (ambient, diffuse, specular);
+  }
+
+
+  //calcDir light - (SUN)/////////////////////////////////////////////////////////////
+  //ambient
+  vec4 ambient = vec4(vec4(light.ambient,1.0) * final_mix );
+
+  //diffuse and specular only done with first texture to make it appear lighter - it was too dark with
+  //all 3 textures
+
+  // diffuse
+  lightDir = normalize(-light.direction);
+  float diff = max(dot(norm, lightDir), 0.0);
+  vec4 diffuse = vec4(vec4(light.diffuse,1.0) * diff  * (vec3(texture(first_texture, aTexCoord)),0.8));
+
+  // specular
+  vec3 reflectDir = reflect(-lightDir, norm);
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess );
+  vec4 specular = vec4(vec4(light.specular,1.0) * spec  * (vec3(texture(first_texture, aTexCoord)),0.8));
+
+  vec4 result2 =   (ambient + diffuse + specular);
+  ///////////////////////////////////////////////////////////////////////////////////
+
+
+  //if sun is on, reduce spotlight intensity
+  if (length(result) > 0)  {
+    fragColor = (result/2) + result2;
+  } else {
+    fragColor = result + result2 ;
+  }
+}
